@@ -1,0 +1,302 @@
+import pandas as pd
+import seaborn as sns
+import numpy as np
+import matplotlib.pyplot as plt
+import chart_studio.plotly as py
+import cufflinks as cf
+import plotly.graph_objects as go
+import plotly.express as px
+import sidetable
+import missingno as msno
+from ipywidgets import interact, widgets
+#divisão da base de dados
+from sklearn.model_selection import train_test_split
+
+#tratamento dos dados categóricos e numéricos
+from sklearn.preprocessing import MinMaxScaler
+
+#classificadores
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.neural_network import MLPClassifier
+from sklearn.preprocessing import LabelEncoder
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, balanced_accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
+from imblearn.over_sampling import SMOTE
+
+# Função para carregar CSV e XLS da Pasta:
+
+Churn = pd.read_csv("Z:/01. PESSOAL/BRUNO/VScode/Case Churn/BankChurners.csv")
+metadados = pd.read_excel("Z:/01. PESSOAL/BRUNO/VScode/Case Churn/metadados.xlsx")
+
+print("Dados de Churn:", Churn.shape)
+Churn.info()
+print("\nDados de Meta Dados:")
+metadados.info()
+
+#Verificando estatisticas descritivas
+
+Churn.describe()
+
+# =====================================
+# Etapa 02) Tratamento dos Dados
+# =====================================
+
+# Remover colunas desnecessárias (como predições de modelo prévio embutidas)
+Churn.drop(Churn.columns[Churn.columns.str.startswith("Naive_Bayes")], axis=1, inplace=True)
+
+# Verificar tipos de dados
+print(Churn.info())
+
+# Verificar duplicados
+print("Duplicados:", Churn.duplicated().sum())
+
+# =====================================
+# Etapa 03) Limpeza dos Dados
+# =====================================
+
+# Valores ausentes
+print(Churn.isnull().sum())
+
+# Excluir colunas de ID e irrelevantes
+Churn.drop(columns=['CLIENTNUM'], inplace=True)
+
+# =====================================
+# Etapa 04) Análise Exploratória de Dados (EDA)
+# =====================================
+
+# Distribuição do churn
+sns.countplot(x="Attrition_Flag", data=Churn)
+plt.title("Distribuição de Churn (Attrition Flag)")
+plt.show()
+
+# Gênero
+sns.countplot(x="Gender", hue="Attrition_Flag", data=Churn)
+plt.title("Gênero vs Churn")
+plt.show()
+
+# Escolaridade
+sns.countplot(x="Education_Level", hue="Attrition_Flag", data=Churn)
+plt.title("Escolaridade vs Churn")
+plt.xticks(rotation=45)
+plt.show()
+
+# Cartão
+sns.countplot(x="Card_Category", hue="Attrition_Flag", data=Churn)
+plt.title("Tipo de Cartão vs Churn")
+plt.show()
+
+# Salário
+sns.boxplot(x="Attrition_Flag", y="Customer_Age", data=Churn)
+plt.title("Idade vs Churn")
+plt.show()
+
+#idade
+sns.histplot(data=Churn, x='Customer_Age', hue='Attrition_Flag', kde=True)
+plt.title('Distribuição de Idade por Churn')
+plt.show()
+
+#Dependentes
+sns.countplot(x='Dependent_count', hue='Attrition_Flag', data=Churn)
+plt.title('Distribuição de Dependentes por Churn')
+plt.show()
+
+#meses
+sns.histplot(data=Churn, x='Months_on_book', hue='Attrition_Flag', kde=True)
+plt.title('Meses como Cliente por Churn')
+plt.show()
+
+#Transações
+sns.scatterplot(x='Total_Trans_Amt', y='Income_Category', hue='Attrition_Flag', data=Churn)
+plt.title('Gastos Mensais vs. Churn')
+plt.show()
+
+ #Normalização dos dados
+scaler = MinMaxScaler()
+numeric_features = ['Total_Relationship_Count','Avg_Utilization_Ratio', 'Months_on_book', 'Total_Trans_Amt']
+Churn[numeric_features] = scaler.fit_transform(Churn[numeric_features])
+
+# =====================================
+# Etapa 05) Pré-processamento dos Dados
+# =====================================
+
+from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.model_selection import train_test_split
+from imblearn.over_sampling import SMOTE
+
+# Codificação das variáveis categóricas
+categoricas = Churn.select_dtypes(include="object").columns.tolist()
+for col in categoricas:
+    le = LabelEncoder()
+    Churn[col] = le.fit_transform(Churn[col])
+
+# Divisão em X e y
+X = Churn.drop("Attrition_Flag", axis=1)
+y = Churn["Attrition_Flag"]
+
+# SMOTE - Balanceamento
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, stratify=y, random_state=42)
+
+sm = SMOTE(random_state=42)
+X_res, y_res = sm.fit_resample(X_train, y_train)
+
+# Escalonamento
+scaler = StandardScaler()
+X_res = scaler.fit_transform(X_res)
+X_test = scaler.transform(X_test)
+
+# =====================================
+# Etapa 06) Criação, Treinamento e Avaliação do Modelo
+# =====================================
+
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.svm import SVC
+from sklearn.metrics import classification_report, confusion_matrix, roc_curve, roc_auc_score
+
+# Modelos
+modelos = {
+    "Random Forest": RandomForestClassifier(),
+    "Regressão Logística": LogisticRegression(max_iter=1000),
+    "Árvore de Decisão": DecisionTreeClassifier(),
+    "SVM": SVC(probability=True)
+}
+
+# Avaliação dos modelos
+for nome, modelo in modelos.items():
+    modelo.fit(X_res, y_res)
+    y_pred = modelo.predict(X_test)
+    y_prob = modelo.predict_proba(X_test)[:, 1]
+    
+    print(f"\nModelo: {nome}")
+    print(classification_report(y_test, y_pred))
+    print("AUC:", roc_auc_score(y_test, y_prob))
+
+    # Curva ROC
+    fpr, tpr, _ = roc_curve(y_test, y_prob)
+    plt.plot(fpr, tpr, label=f"{nome} (AUC = {roc_auc_score(y_test, y_prob):.2f})")
+
+plt.plot([0, 1], [0, 1], 'k--')
+plt.xlabel("False Positive Rate")
+plt.ylabel("True Positive Rate")
+plt.title("Curva ROC")
+plt.legend()
+plt.show()
+
+# Importância das Features com Random Forest
+importances = modelos["Random Forest"].feature_importances_
+indices = np.argsort(importances)[::-1]
+plt.title("Importância das Variáveis - Random Forest")
+sns.barplot(x=importances[indices], y=X.columns[indices])
+plt.show()
+
+#tunning dos Hiperparametros
+
+import pandas as pd
+import numpy as np
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import GridSearchCV, train_test_split
+from sklearn.metrics import (accuracy_score, precision_score, recall_score, 
+                            f1_score, roc_auc_score, confusion_matrix, 
+                            classification_report)
+import matplotlib.pyplot as plt
+import seaborn as sns
+import joblib
+
+# 1. Carregar o dataset
+X = Churn.drop('Attrition_Flag', axis=1)        # Features
+y = Churn['Attrition_Flag']                     # Variável alvo
+
+# 2. Dividir em conjuntos de treino e teste
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42, stratify=y
+)
+
+# 3. Definir a grade de hiperparâmetros para busca
+param_grid = {
+    'n_estimators': [100, 200, 300],      # Número de árvores
+    'max_depth': [None, 10, 15, 20],      # Profundidade máxima
+    'min_samples_split': [2, 5, 10],      # Mínimo de amostras para dividir
+    'min_samples_leaf': [1, 2, 4],        # Mínimo de amostras nas folhas
+    'max_features': ['sqrt', 'log2'],     # Número de features para split
+    'bootstrap': [True, False],           # Amostragem com/sem reposição
+    'class_weight': [None, 'balanced']    # Para dados desbalanceados
+}
+
+# 4. Configurar o GridSearchCV
+grid_search = GridSearchCV(
+    estimator=RandomForestClassifier(random_state=42),
+    param_grid=param_grid,
+    scoring='f1_macro',                   # Métrica de avaliação
+    cv=5,                                 # 5-fold cross-validation
+    n_jobs=-1,                            # Usar todos os núcleos do CPU
+    verbose=2                             # Mostrar logs detalhados
+)
+
+# 5. Executar a busca
+print("Iniciando busca de hiperparâmetros...")
+grid_search.fit(X_train, y_train)
+
+# 6. Resultados da otimização
+print("\nMelhores hiperparâmetros encontrados:")
+print(grid_search.best_params_)
+
+print("\nMelhor score (F1-macro) na validação cruzada:")
+print(f"{grid_search.best_score_:.4f}")
+
+# 7. Avaliar o melhor modelo no conjunto de teste
+best_model = grid_search.best_estimator_
+y_pred = best_model.predict(X_test)
+y_proba = best_model.predict_proba(X_test)[:, 1]
+
+print("\nMétricas no conjunto de teste:")
+print(f"Acurácia: {accuracy_score(y_test, y_pred):.4f}")
+print(f"Precisão: {precision_score(y_test, y_pred):.4f}")
+print(f"Recall: {recall_score(y_test, y_pred):.4f}")
+print(f"F1-Score: {f1_score(y_test, y_pred):.4f}")
+print(f"AUC-ROC: {roc_auc_score(y_test, y_proba):.4f}")
+
+# 8. Relatório de classificação detalhado
+print("\nRelatório de Classificação:")
+print(classification_report(y_test, y_pred))
+
+# 9. Matriz de confusão
+plt.figure(figsize=(8, 6))
+cm = confusion_matrix(y_test, y_pred)
+sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
+            xticklabels=['Negativo', 'Positivo'], 
+            yticklabels=['Negativo', 'Positivo'])
+plt.xlabel('Predito')
+plt.ylabel('Real')
+plt.title('Matriz de Confusão')
+plt.show()
+
+# 10. Importância das features
+feature_importance = pd.Series(
+    best_model.feature_importances_, 
+    index=X.columns
+).sort_values(ascending=False)
+
+plt.figure(figsize=(10, 6))
+feature_importance.head(15).plot(kind='barh')
+plt.title('Top 15 Features Mais Importantes')
+plt.xlabel('Importância')
+plt.show()
+
+# 11. Salvar o modelo otimizado
+joblib.dump(best_model, 'random_forest_otimizado.pkl')
+print("\nModelo salvo como 'random_forest_otimizado.pkl'")
+
+# 12.  Visualizar uma árvore do ensemble
+from sklearn.tree import plot_tree
+plt.figure(figsize=(20, 10))
+plot_tree(
+    best_model.estimators_[0], 
+    feature_names=X.columns, 
+    filled=True, 
+    rounded=True,
+    max_depth=2  # Limitar profundidade para visualização
+)
+plt.title("Exemplo de Árvore do Random Forest")
+plt.show()
